@@ -1,16 +1,10 @@
 local M = {}
 
--- 确定关键字: exact, regex?
--- 确定作用域
--- 选择匹配项
--- 定位到起始位置，sync
--- confirm or cancel
-
 local augroups = require("infra.augroups")
 local buflines = require("infra.buflines")
 local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
-local jelly = require("infra.jellyfish")("ido.global", "debug")
+local jelly = require("infra.jellyfish")("ido.global", "info")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
@@ -158,6 +152,7 @@ function M.activate(winid)
   local truth_xmid
   for i = 1, #origins do
     local origin = origins[i]
+    --todo: dedicated hlgroups for ido
     local group = i == truth_idx and "Todo" or "Search"
     --stylua: ignore start
     local xmid = ni.buf_set_extmark(bufnr, anchor_ns, origin.lnum, origin.start_col, {
@@ -177,18 +172,17 @@ function M.activate(winid)
     ---* buf_set_text wont trigger TextChanged/I in insert/normal mode
     ---* undo also triggers TextChanged and buf_set_text here creates undo blocks, this leads infinite undo
     ---
-    ---workaround for undo/redo
-    ---* compare last_truth and truth_text to avoid replicate triggering
-    ---* compare last_truth and truth_text to avoid replicate triggering
-    ---
     ---design choices
     ---* only sync changes from truth_xm
     ---* allow change other xms, but no syncing
+    ---
+    ---workaround for undo/redo
+    ---* compare last_text and truth_text to avoid replicate triggering
 
     local origin_text = xmarks.text(bufnr, truth_xmid)
 
     --workaround of undo/redo
-    local last_truth ---@type nil|string[]
+    local last_text = {} ---@type string[]
 
     local function on_change()
       local truth_text = xmarks.text(bufnr, truth_xmid)
@@ -196,10 +190,10 @@ function M.activate(winid)
       if truth_text == nil then return true end
 
       if truth_text == origin_text then return jelly.debug("no changes") end
-      if last_truth and itertools.equals(truth_text, last_truth) then return jelly.debug("no changes") end
+      if itertools.equals(truth_text, last_text) then return jelly.debug("no changes") end
 
       debounce:start_soon(function()
-        last_truth = truth_text
+        last_text = truth_text
 
         for i = 1, #xmids do
           if i == truth_idx then goto continue end
