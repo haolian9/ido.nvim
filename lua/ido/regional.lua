@@ -2,12 +2,11 @@ local M = {}
 
 local ascii = require("infra.ascii")
 local augroups = require("infra.augroups")
-local buflines = require("infra.buflines")
 local feedkeys = require("infra.feedkeys")
 local highlighter = require("infra.highlighter")
 local itertools = require("infra.itertools")
 local its = require("infra.its")
-local jelly = require("infra.jellyfish")("ido.global", "debug")
+local jelly = require("infra.jellyfish")("ido.regional", "debug")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
@@ -21,7 +20,7 @@ local ropes = require("string.buffer")
 local uv = vim.uv
 local ts = vim.treesitter
 
-local anchor_ns = ni.create_namespace("ido:global:anchors")
+local anchor_ns = ni.create_namespace("ido:regional:anchors")
 
 do
   local hi = highlighter(0)
@@ -315,7 +314,7 @@ do
     local start_node = ts.get_node({ bufnr = bufnr, pos = { cursor.lnum, cursor.col }, ignore_injections = true })
     if start_node == nil then error("no tsnode found") end
 
-    ---@type TSNode, TSNode[], TSNode[]
+    ---@type TSNode, TSNode[], string[]
     local root, parents, names = nil, {}, {}
     do
       local node = start_node
@@ -324,28 +323,32 @@ do
         node = parent
         if parent == nil then break end
         root = parent
+
         if not parent:named() then goto continue end
+
         local fields = parent:field("name")
         if #fields == 0 then goto continue end
         assert(#fields == 1)
+        local name = table.concat(nuts.get_node_lines(bufnr, fields[1]))
+
         table.insert(parents, 1, parent)
-        table.insert(names, 1, fields[1])
+        table.insert(names, 1, name)
+
         ::continue::
       end
       assert(root ~= nil)
+      table.insert(parents, 1, root)
+      table.insert(names, 1, "$")
     end
 
     ---@type TSNode[], string[]
-    local regions, paths = {}, {}
-    --todo: it seems root-node.stop_lnum is exclusive, but others.stop_lnum is inclusive
+    local nodes, paths = {}, {}
     for i = 1, #parents do
-      table.insert(regions, parents[i])
-      table.insert(paths, its(names):head(i):map(function(node) return table.concat(nuts.get_node_lines(bufnr, node)) end):join("/"))
+      table.insert(nodes, parents[i])
+      table.insert(paths, its(names):head(i):join("/"))
     end
-    table.insert(regions, 1, root)
-    table.insert(paths, 1, "/")
 
-    return regions, paths
+    return nodes, paths
   end
 
   ---@param winid? integer
@@ -365,8 +368,8 @@ do
       local nodes, paths = collect_routes(winid, cursor)
       puff.select(paths, { prompt = "ido regions" }, function(_, row)
         if row == nil then return end
+        --todo: potential off-by-one; it seems root-node.stop_lnum is exclusive, but others.stop_lnum are inclusive
         local start_lnum, _, stop_lnum = nodes[row]:range()
-        stop_lnum = stop_lnum
         local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
         if ses == nil then return end
         sessions:activate(ses)
