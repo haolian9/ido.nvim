@@ -7,13 +7,12 @@ local feedkeys = require("infra.feedkeys")
 local highlighter = require("infra.highlighter")
 local itertools = require("infra.itertools")
 local its = require("infra.its")
-local jelly = require("infra.jellyfish")("ido.regional", "debug")
+local jelly = require("infra.jellyfish")("ido", "debug")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
-local beckon_select = require("beckon.select")
 local puff = require("puff")
 local nuts = require("squirrel.nuts")
 local ropes = require("string.buffer")
@@ -21,7 +20,7 @@ local ropes = require("string.buffer")
 local uv = vim.uv
 local ts = vim.treesitter
 
-local anchor_ns = ni.create_namespace("ido:regional:anchors")
+local anchor_ns = ni.create_namespace("ido:anchors")
 
 do
   local hi = highlighter(0)
@@ -341,6 +340,8 @@ do
         if parent == nil then break end
         root = parent
 
+        --todo: filter out noises
+
         if not parent:named() then goto continue end
 
         local fields = parent:field("name")
@@ -411,7 +412,7 @@ do --M.deactivate
     end
     if #entries == 0 then return jelly.info("no active sessions") end
 
-    beckon_select(entries, { prompt = "ido deactivate" }, function(_, row)
+    puff.select(entries, { prompt = "ido deactivate" }, function(_, row)
       local nr = assert(bufs[row])
       sessions:deactivate(nr)
     end)
@@ -426,16 +427,6 @@ do --M.deactivate
 
     select_one_to_deactivate()
   end
-end
-
----@param winid? integer
-function M.toggle(winid)
-  winid = winid or ni.get_current_win()
-  local bufnr = ni.win_get_buf(winid)
-
-  if sessions:is_active(bufnr) then return sessions:deactivate(bufnr) end
-
-  M.activate(winid)
 end
 
 return M
