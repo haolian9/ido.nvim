@@ -6,16 +6,20 @@ local buflines = require("infra.buflines")
 local feedkeys = require("infra.feedkeys")
 local highlighter = require("infra.highlighter")
 local itertools = require("infra.itertools")
-local jelly = require("infra.jellyfish")("ido.global", "info")
+local its = require("infra.its")
+local jelly = require("infra.jellyfish")("ido.global", "debug")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
 local beckon_select = require("beckon.select")
+local puff = require("puff")
+local nuts = require("squirrel.nuts")
 local ropes = require("string.buffer")
 
 local uv = vim.uv
+local ts = vim.treesitter
 
 local anchor_ns = ni.create_namespace("ido:global:anchors")
 
@@ -144,7 +148,7 @@ do
   ---@field winid integer
   ---@field bufnr integer
   ---
-  ---@field keyword string
+  ---@field pattern string
   ---@field origins ido.Origin[]
   ---@field truth_idx integer
   ---
@@ -155,7 +159,7 @@ do
   local Impl = {}
   Impl.__index = Impl
 
-  function Impl:activate() --
+  function Impl:activate()
     do --place anchors
       for i = 1, #self.origins do
         local origin = self.origins[i]
@@ -220,7 +224,7 @@ do
   function Impl:title()
     local pos = anchors.pos(self.bufnr, self.truth_xmid)
     local lnum = pos and pos.start_lnum or "n/a"
-    return string.format("buf#%d:%s '%s'", self.bufnr, lnum, self.keyword)
+    return string.format("buf#%d:%s '%s'", self.bufnr, lnum, self.pattern)
   end
 
   function Impl:deactivate()
@@ -232,16 +236,18 @@ do
   end
 
   ---@param winid integer
-  ---@param keyword string
+  ---@param cursor infra.wincursor.Position
+  ---@param pattern string
+  ---@param start_lnum integer @0-based; inclusive
+  ---@param stop_lnum integer @0-based; exclusive
   ---@return ido.Session?
-  function Session(winid, keyword)
+  function Session(winid, cursor, start_lnum, stop_lnum, pattern)
     local bufnr = ni.win_get_buf(winid)
-    local cursor = wincursor.last_position()
 
     local origins = {} ---@type ido.Origin[]
     do
-      local regex = assert(VimRegex(resolve_pattern(keyword)))
-      for lnum = 0, buflines.high(bufnr) do
+      local regex = assert(VimRegex(pattern))
+      for lnum = start_lnum, stop_lnum - 1 do
         for start_col, stop_col in regex:iter_line(bufnr, lnum) do
           table.insert(origins, { lnum = lnum, start_col = start_col, stop_col = stop_col })
         end
@@ -268,7 +274,7 @@ do
     --stylua: ignore start
     return setmetatable({
       winid = winid, bufnr = bufnr,
-      keyword = keyword, origins = origins, truth_idx = truth_idx,
+      pattern= pattern, origins = origins, truth_idx = truth_idx,
       xmids = {}, truth_xmid = nil,
     }, Impl)
     --stylua: ignore end
@@ -298,19 +304,75 @@ do
   end
 end
 
----@param winid? integer
-function M.activate(winid)
-  winid = winid or ni.get_current_win()
+do
+  ---@param winid integer
+  ---@param cursor infra.wincursor.Position
+  ---@return TSNode[] nodes
+  ---@return string[] paths
+  local function collect_routes(winid, cursor)
+    local bufnr = ni.win_get_buf(winid)
 
-  local bufnr = ni.win_get_buf(winid)
-  sessions:deactivate(bufnr)
+    local start_node = ts.get_node({ bufnr = bufnr, pos = { cursor.lnum, cursor.col }, ignore_injections = true })
+    if start_node == nil then error("no tsnode found") end
 
-  local keyword = vsel.oneline_text(bufnr)
-  if keyword == nil then return jelly.info("no selecting keyword") end
+    ---@type TSNode, TSNode[], TSNode[]
+    local root, parents, names = nil, {}, {}
+    do
+      local node = start_node
+      while true do
+        local parent = node:parent()
+        node = parent
+        if parent == nil then break end
+        root = parent
+        if not parent:named() then goto continue end
+        local fields = parent:field("name")
+        if #fields == 0 then goto continue end
+        assert(#fields == 1)
+        table.insert(parents, 1, parent)
+        table.insert(names, 1, fields[1])
+        ::continue::
+      end
+      assert(root ~= nil)
+    end
 
-  local ses = Session(winid, keyword)
-  if ses == nil then return end
-  sessions:activate(ses)
+    ---@type TSNode[], string[]
+    local regions, paths = {}, {}
+    --todo: it seems root-node.stop_lnum is exclusive, but others.stop_lnum is inclusive
+    for i = 1, #parents do
+      table.insert(regions, parents[i])
+      table.insert(paths, its(names):head(i):map(function(node) return table.concat(nuts.get_node_lines(bufnr, node)) end):join("/"))
+    end
+    table.insert(regions, 1, root)
+    table.insert(paths, 1, "/")
+
+    return regions, paths
+  end
+
+  ---@param winid? integer
+  function M.activate(winid)
+    winid = winid or ni.get_current_win()
+    local cursor = wincursor.last_position()
+
+    local bufnr = ni.win_get_buf(winid)
+    sessions:deactivate(bufnr)
+
+    local keyword = vsel.oneline_text(bufnr)
+    if keyword == nil then return jelly.info("no selecting keyword") end
+
+    puff.input({ icon = "🎯", prompt = "ido", startinsert = "A", default = resolve_pattern(keyword) }, function(pattern)
+      if pattern == nil or pattern == "" then return end
+
+      local nodes, paths = collect_routes(winid, cursor)
+      puff.select(paths, { prompt = "ido regions" }, function(_, row)
+        if row == nil then return end
+        local start_lnum, _, stop_lnum = nodes[row]:range()
+        stop_lnum = stop_lnum
+        local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
+        if ses == nil then return end
+        sessions:activate(ses)
+      end)
+    end)
+  end
 end
 
 do --M.deactivate
@@ -351,3 +413,4 @@ function M.toggle(winid)
 end
 
 return M
+
