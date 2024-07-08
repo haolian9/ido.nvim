@@ -14,7 +14,6 @@ local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
 local puff = require("puff")
-local nuts = require("squirrel.nuts")
 local ropes = require("string.buffer")
 
 local uv = vim.uv
@@ -168,7 +167,7 @@ do
       self.truth_xmid = self.xmids[self.truth_idx]
     end
 
-    self.aug = augroups.BufAugroup(self.bufnr, true, string.format("ido://%d", self.bufnr))
+    self.aug = augroups.BufAugroup(self.bufnr, "ido", true)
     self.debounce = Debounce(125)
 
     do --sync mechanism
@@ -347,7 +346,7 @@ do
         local fields = parent:field("name")
         if #fields == 0 then goto continue end
         assert(#fields == 1)
-        local name = table.concat(nuts.get_node_lines(bufnr, fields[1]))
+        local name = ts.get_node_text(fields[1], bufnr)
 
         table.insert(parents, 1, parent)
         table.insert(names, 1, name)
