@@ -1,7 +1,21 @@
 a poorly-written `iedit` impl
 
+https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3e30b96
+
+
 ## design choices, features, limits
-TBD 
+* interactive
+  * [x] input the pattern
+  * [x] select a region, when treesitter is available
+  * [ ] opt-in/out on each occurrence, i think that's too cumbersome
+* good default without interactive
+* one and only one active session for each buffer
+* only one truth of source, all others are replica
+* no realtime syncing, must have a delay time
+* syncing changes to the buffer directly rather than extmarks
+  * i found it's hard to maintance the integrity between buffer content and extmark, during
+    user editing, especially undo/redo .
+* vim-flavored pattern
 
 ## status
 * just works
@@ -10,15 +24,14 @@ TBD
 * nvim 0.10.*
 * haolian9/infra.nvim
 * haolian9/puff.nvim
-* haolian9/beckon.nvim
 * haolian9/squirrel.nvim
 
 ## usage
 here's my personal config
 ```
 do --ido
-  m.x("I", ":lua require'ido'.activate_interactively()<cr>")
-  m.x("A", ":lua require'ido'.activate()<cr>")
+  m.x("gi", ":lua require'ido'.activate_interactively()<cr>")
+  m.x("ga", ":lua require'ido'.activate()<cr>")
 
   do --:Ido
     local spell = cmds.Spell("Ido", function(args, ctx)
