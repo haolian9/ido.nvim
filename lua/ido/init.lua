@@ -1,8 +1,11 @@
 local M = {}
 
+local ropes = require("string.buffer")
+
 local ascii = require("infra.ascii")
 local augroups = require("infra.augroups")
 local buflines = require("infra.buflines")
+local ex = require("infra.ex")
 local feedkeys = require("infra.feedkeys")
 local highlighter = require("infra.highlighter")
 local itertools = require("infra.itertools")
@@ -14,7 +17,7 @@ local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
 local puff = require("puff")
-local ropes = require("string.buffer")
+local nuts = require("squirrel.nuts")
 
 local uv = vim.uv
 local ts = vim.treesitter
@@ -205,6 +208,7 @@ do
             ni.buf_set_text(self.bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, truth_text)
             ::continue::
           end
+          ---intended to do nothing on undo block, IMO this is the most nature behavior
         end)
       end
       self.aug:repeats({ "TextChanged", "TextChangedI" }, { callback = on_change })
@@ -285,6 +289,10 @@ do
   ---@type {[integer]: ido.Session}
   sessions.kv = {}
 
+  ---@param bufnr integer
+  ---@return ido.Session?
+  function sessions:session(bufnr) return self.kv[bufnr] end
+
   function sessions:is_active(bufnr) return self.kv[bufnr] ~= nil end
 
   ---@param ses ido.Session
@@ -335,18 +343,23 @@ do
       local node = start_node
       while true do
         local parent = node:parent()
-        node = parent
         if parent == nil then break end
         root = parent
 
+        local old_node = node
+        node = parent
+        if nuts.same_range(parent, old_node) then goto continue end
+
         --todo: filter out noises
 
-        if not parent:named() then goto continue end
-
+        local name
         local fields = parent:field("name")
-        if #fields == 0 then goto continue end
-        assert(#fields == 1)
-        local name = ts.get_node_text(fields[1], bufnr)
+        if #fields == 0 then --anonymous
+          name = parent:type()
+        else
+          assert(#fields == 1)
+          name = ts.get_node_text(fields[1], bufnr)
+        end
 
         table.insert(parents, 1, parent)
         table.insert(names, 1, name)
@@ -426,6 +439,19 @@ do --M.deactivate
 
     select_one_to_deactivate()
   end
+end
+
+function M.goto_truth(winid)
+  winid = winid or ni.get_current_win()
+  local bufnr = ni.win_get_buf(winid)
+
+  local ses = sessions:session(bufnr)
+  if ses == nil then return jelly.info("no active session") end
+
+  local pos = anchors.pos(bufnr, ses.truth_xmid)
+  if pos == nil then return jelly.debug("invald truth xmark") end
+  wincursor.go(winid, pos.stop_lnum, pos.stop_col)
+  ex("startinsert")
 end
 
 return M
