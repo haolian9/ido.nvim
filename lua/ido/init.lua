@@ -66,8 +66,8 @@ do
   function anchors.pos(bufnr, xmid)
     local xm = ni.buf_get_extmark_by_id(bufnr, anchor_ns, xmid, { details = true })
 
-    --the .invalid is not reliable here
-    if xm[1] == xm[3].end_row and xm[2] == xm[3].end_col then return end
+    if #xm == 0 then return end
+    ---the anchor can be 0-range
 
     return { start_lnum = xm[1], start_col = xm[2], stop_lnum = xm[3].end_row, stop_col = xm[3].end_col }
   end
@@ -97,7 +97,7 @@ do
       hl_group = group, hl_mode = "replace",
       right_gravity = false, end_right_gravity = true,
 
-      ---intended to not use {.invalidate, .undo_restore, .invalid}, see anchors.pos
+      ---intended to not use {.invalidate, .undo_restore}
     })
     --stylua: ignore end
   end
