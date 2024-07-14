@@ -9,15 +9,14 @@ local ex = require("infra.ex")
 local feedkeys = require("infra.feedkeys")
 local highlighter = require("infra.highlighter")
 local itertools = require("infra.itertools")
-local its = require("infra.its")
 local jelly = require("infra.jellyfish")("ido", "debug")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
+local collect_routes = require("ido.collect_routes")
 local puff = require("puff")
-local nuts = require("squirrel.nuts")
 
 local uv = vim.uv
 local ts = vim.treesitter
@@ -326,92 +325,36 @@ function M.activate(winid)
   sessions:activate(ses)
 end
 
-do
-  ---@param winid integer
-  ---@param cursor infra.wincursor.Position
-  ---@return TSNode[] nodes
-  ---@return string[] paths
-  local function collect_routes(winid, cursor)
-    local bufnr = ni.win_get_buf(winid)
+---@param winid? integer
+function M.activate_interactively(winid)
+  winid = winid or ni.get_current_win()
+  local bufnr = ni.win_get_buf(winid)
+  local cursor = wincursor.last_position()
 
-    local start_node = ts.get_node({ bufnr = bufnr, pos = { cursor.lnum, cursor.col }, ignore_injections = true })
-    if start_node == nil then error("no tsnode found") end
+  sessions:deactivate(bufnr)
 
-    ---@type TSNode, TSNode[], string[]
-    local root, parents, names = nil, {}, {}
-    do
-      local node = start_node
-      while true do
-        local parent = node:parent()
-        if parent == nil then break end
-        root = parent
+  local keyword = vsel.oneline_text(bufnr)
+  if keyword == nil then return jelly.info("no selecting keyword") end
 
-        local old_node = node
-        node = parent
-        if nuts.same_range(parent, old_node) then goto continue end
+  puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = resolve_pattern(keyword) }, function(pattern)
+    if pattern == nil or pattern == "" then return end
 
-        --todo: filter out noises
-
-        local name
-        local fields = parent:field("name")
-        if #fields == 0 then --anonymous
-          name = parent:type()
-        else
-          assert(#fields == 1)
-          name = ts.get_node_text(fields[1], bufnr)
-        end
-
-        table.insert(parents, 1, parent)
-        table.insert(names, 1, name)
-
-        ::continue::
-      end
-      assert(root ~= nil)
-      table.insert(parents, 1, root)
-      table.insert(names, 1, "$")
-    end
-
-    ---@type TSNode[], string[]
-    local nodes, paths = {}, {}
-    for i = 1, #parents do
-      table.insert(nodes, parents[i])
-      table.insert(paths, its(names):head(i):join("/"))
-    end
-
-    return nodes, paths
-  end
-
-  ---@param winid? integer
-  function M.activate_interactively(winid)
-    winid = winid or ni.get_current_win()
-    local bufnr = ni.win_get_buf(winid)
-    local cursor = wincursor.last_position()
-
-    sessions:deactivate(bufnr)
-
-    local keyword = vsel.oneline_text(bufnr)
-    if keyword == nil then return jelly.info("no selecting keyword") end
-
-    puff.input({ icon = "🎯", prompt = "ido", startinsert = "A", default = resolve_pattern(keyword) }, function(pattern)
-      if pattern == nil or pattern == "" then return end
-
-      if pcall(ts.get_parser, bufnr) then
-        local nodes, paths = collect_routes(winid, cursor)
-        puff.select(paths, { prompt = "ido regions" }, function(_, row)
-          if row == nil then return end
-          --todo: potential off-by-one; it seems root-node.stop_lnum is exclusive, but others.stop_lnum are inclusive
-          local start_lnum, _, stop_lnum = nodes[row]:range()
-          local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
-          if ses == nil then return end
-          sessions:activate(ses)
-        end)
-      else
-        local ses = Session(winid, cursor, 0, buflines.high(bufnr), pattern)
+    if pcall(ts.get_parser, bufnr) then
+      local nodes, paths = collect_routes(bufnr, cursor)
+      puff.select(paths, { prompt = "ido regions" }, function(_, index)
+        if index == nil then return end
+        --todo: potential off-by-one; it seems root-node.stop_lnum is exclusive, but others.stop_lnum are inclusive
+        local start_lnum, _, stop_lnum = nodes[index]:range()
+        local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
         if ses == nil then return end
         sessions:activate(ses)
-      end
-    end)
-  end
+      end)
+    else
+      local ses = Session(winid, cursor, 0, buflines.high(bufnr), pattern)
+      if ses == nil then return end
+      sessions:activate(ses)
+    end
+  end)
 end
 
 do --M.deactivate
