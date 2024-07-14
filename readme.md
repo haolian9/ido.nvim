@@ -16,6 +16,7 @@ https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3
   * i found it's hard to maintance the integrity between buffer content and extmark, during
     user editing, especially undo/redo .
 * vim-flavored pattern
+* [ ] compatible with **utf-8** characters
 
 ## status
 * just works
