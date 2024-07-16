@@ -34,7 +34,10 @@ function M.text(bufnr, id_or_pos)
     pos = id_or_pos
   end
 
-  return ni.buf_get_text(bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, {})
+  ---as the extmark.invalidate=true is not being used, the pos could be invalid
+  local ok, text = pcall(ni.buf_get_text, bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, {})
+  if ok then return text end
+  assert(text == "Index out of bounds", text)
 end
 
 ---@param bufnr integer

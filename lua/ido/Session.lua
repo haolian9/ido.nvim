@@ -47,6 +47,8 @@ end
 ---
 ---@class ido.Session
 ---
+---@field status 'created'|'active'|'inactive'
+---
 ---@field winid integer
 ---@field bufnr integer
 ---
@@ -62,6 +64,8 @@ local Session = {}
 Session.__index = Session
 
 function Session:activate()
+  assert(self.status == "created")
+
   do --place anchors
     for i = 1, #self.origins do
       local origin = self.origins[i]
@@ -94,7 +98,7 @@ function Session:activate()
     local function on_change()
       local truth_text = anchors.text(self.bufnr, self.truth_xmid)
       if truth_text == nil then jelly.info("anchor#0 has gone") end
-      if truth_text == nil then return true end
+      if truth_text == nil then return self:deactivate() end
 
       if truth_text == origin_text then return jelly.debug("no changes") end
       if itertools.equals(truth_text, last_text) then return jelly.debug("no changes") end
@@ -106,7 +110,8 @@ function Session:activate()
           if i == self.truth_idx then goto continue end
           local pos = anchors.pos(self.bufnr, self.xmids[i])
           if pos == nil then goto continue end
-          ni.buf_set_text(self.bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, truth_text)
+          ---as the extmark.invalidate=true is not being used, the pos could be invalid
+          pcall(ni.buf_set_text, self.bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, truth_text)
           ::continue::
         end
         ---intended to do nothing on undo block, IMO this is the most nature behavior
@@ -121,6 +126,8 @@ function Session:activate()
     wincursor.go(self.winid, pos.stop_lnum, pos.stop_col - 1)
     feedkeys("a", "n")
   end
+
+  self.status = "active"
 end
 
 ---@return string
@@ -131,11 +138,17 @@ function Session:title()
 end
 
 function Session:deactivate()
+  if self.status == "created" then goto beinactive end
+  if self.status == "inactive" then return end
+
   self.aug:unlink()
   self.debounce:close()
   for _, xmid in ipairs(self.xmids) do
     anchors.del(self.bufnr, xmid)
   end
+
+  ::beinactive::
+  self.status = "inactive"
 end
 
 ---@param winid integer
@@ -180,6 +193,7 @@ return function(winid, cursor, start_lnum, stop_lnum, pattern)
 
     --stylua: ignore start
     return setmetatable({
+      status = 'created',
       winid = winid, bufnr = bufnr,
       pattern= pattern, origins = origins, truth_idx = truth_idx,
       xmids = {}, truth_xmid = nil,

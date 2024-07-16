@@ -42,9 +42,24 @@ do
 
   ---@param bufnr integer
   ---@return ido.Session?
-  function sessions:session(bufnr) return self.kv[bufnr] end
+  function sessions:session(bufnr)
+    local ses = self.kv[bufnr]
+    if ses == nil then return end
+    assert(ses.status ~= "created")
+    if ses.status == "active" then return ses end
+    self.kv[bufnr] = nil
+  end
 
-  function sessions:is_active(bufnr) return self.kv[bufnr] ~= nil end
+  ---@param bufnr integer
+  ---@return boolean
+  function sessions:is_active(bufnr)
+    local ses = self.kv[bufnr]
+    if ses == nil then return false end
+    assert(ses.status ~= "created")
+    if ses.status == "active" then return true end
+    self.kv[bufnr] = nil
+    return false
+  end
 
   ---@param ses ido.Session
   function sessions:activate(ses)
