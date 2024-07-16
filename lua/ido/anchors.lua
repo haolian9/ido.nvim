@@ -1,5 +1,6 @@
 local M = {}
 
+local jelly = require("infra.jellyfish")("ido.anchors", "info")
 local ni = require("infra.ni")
 
 local facts = require("ido.facts")
@@ -37,22 +38,32 @@ function M.text(bufnr, id_or_pos)
   ---as the extmark.invalidate=true is not being used, the pos could be invalid
   local ok, text = pcall(ni.buf_get_text, bufnr, pos.start_lnum, pos.start_col, pos.stop_lnum, pos.stop_col, {})
   if ok then return text end
-  assert(text == "Index out of bounds", text)
+  if text == "Index out of bounds" then return end
+  if text == "start_col must be less than end_col" then return end
+  jelly.fatal("unreachable", "buf=%d; pos=%s; err=%s", bufnr, pos, text)
 end
 
 ---@param bufnr integer
 ---@param origin ido.Origin
 ---@param group string
-function M.set(bufnr, origin, group)
-    --stylua: ignore start
-    return ni.buf_set_extmark(bufnr, facts.anchor_ns, origin.lnum, origin.start_col, {
-      end_row = origin.lnum, end_col = origin.stop_col,
-      hl_group = group, hl_mode = "replace",
-      right_gravity = false, end_right_gravity = true,
+---@param expandable boolean
+function M.set(bufnr, origin, group, expandable)
+  local opts = {
+    end_row = origin.lnum,
+    end_col = origin.stop_col,
+    hl_group = group,
+    hl_mode = "replace",
+    ---intended to not use {.invalidate, .undo_restore}
+  }
+  if expandable then
+    opts.right_gravity = false
+    opts.end_right_gravity = true
+  else
+    opts.right_gravity = true
+    opts.end_right_gravity = false
+  end
 
-      ---intended to not use {.invalidate, .undo_restore}
-    })
-  --stylua: ignore end
+  return ni.buf_set_extmark(bufnr, facts.anchor_ns, origin.lnum, origin.start_col, opts)
 end
 
 ---@param bufnr integer

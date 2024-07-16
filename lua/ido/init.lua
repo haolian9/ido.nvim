@@ -5,19 +5,20 @@ local ropes = require("string.buffer")
 local ascii = require("infra.ascii")
 local buflines = require("infra.buflines")
 local ex = require("infra.ex")
-local jelly = require("infra.jellyfish")("ido", "debug")
+local jelly = require("infra.jellyfish")("ido", "info")
 local ni = require("infra.ni")
 local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
 local anchors = require("ido.anchors")
 local collect_routes = require("ido.collect_routes")
-local Session = require("ido.Session")
+local CoredSession = require("ido.CoredSession")
+local FixedSession = require("ido.FixedSession")
 local puff = require("puff")
 
 local ts = vim.treesitter
 
-local resolve_pattern
+local resolve_as_fixed_pattern
 do
   local rope = ropes.new(64)
 
@@ -25,7 +26,7 @@ do
   ---* to fixed string
   ---* add word boundaries
   ---@param keyword string
-  function resolve_pattern(keyword)
+  function resolve_as_fixed_pattern(keyword)
     keyword = vim.fn.escape(keyword, [[.$*~\]])
     if ascii.is_letter(string.sub(keyword, 1, 1)) then rope:put([[\<]]) end
     rope:put(keyword)
@@ -34,14 +35,27 @@ do
   end
 end
 
+---CAUTION: it uses the current window internally
+---@param expr string
+---@return integer start_lnum @0-based
+---@return integer stop_lnum @0-based, exclusive
+local function eval_range_expr(expr)
+  local parsed = ni.parse_cmd(expr .. "w", {})
+  local start_lnum, stop_lnum = unpack(assert(parsed.range))
+  start_lnum = start_lnum - 1
+  if stop_lnum == nil then stop_lnum = start_lnum + 1 end
+
+  return start_lnum, stop_lnum
+end
+
 local sessions = {}
 do
   ---{bufnr:Session}
-  ---@type {[integer]: ido.Session}
+  ---@type {[integer]: ido.FixedSession|ido.CoredSession}
   sessions.kv = {}
 
   ---@param bufnr integer
-  ---@return ido.Session?
+  ---@return ido.FixedSession|ido.CoredSession?
   function sessions:session(bufnr)
     local ses = self.kv[bufnr]
     if ses == nil then return end
@@ -61,7 +75,7 @@ do
     return false
   end
 
-  ---@param ses ido.Session
+  ---@param ses ido.FixedSession|ido.CoredSession
   function sessions:activate(ses)
     assert(self.kv[ses.bufnr] == nil, "this buf has already activated a session")
     self.kv[ses.bufnr] = ses
@@ -87,7 +101,7 @@ function M.activate(winid)
   local keyword = vsel.oneline_text(bufnr)
   if keyword == nil then return jelly.info("no selecting keyword") end
 
-  local ses = Session(winid, cursor, 0, buflines.count(bufnr), resolve_pattern(keyword))
+  local ses = FixedSession(winid, cursor, 0, buflines.count(bufnr), resolve_as_fixed_pattern(keyword))
   if ses == nil then return end
   sessions:activate(ses)
 end
@@ -103,8 +117,11 @@ function M.activate_interactively(winid)
   local keyword = vsel.oneline_text(bufnr)
   if keyword == nil then return jelly.info("no selecting keyword") end
 
-  puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = resolve_pattern(keyword) }, function(pattern)
+  local default_pattern = resolve_as_fixed_pattern(keyword)
+  puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
     if pattern == nil or pattern == "" then return end
+
+    local SessionImpl = pattern == default_pattern and FixedSession or CoredSession
 
     if pcall(ts.get_parser, bufnr) then
       local nodes, paths = collect_routes(bufnr, cursor)
@@ -112,14 +129,19 @@ function M.activate_interactively(winid)
         if index == nil then return end
         --todo: potential off-by-one; it seems root-node.stop_lnum is exclusive, but others.stop_lnum are inclusive
         local start_lnum, _, stop_lnum = nodes[index]:range()
-        local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
+        stop_lnum = stop_lnum + 1
+        local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
         if ses == nil then return end
         sessions:activate(ses)
       end)
     else
-      local ses = Session(winid, cursor, 0, buflines.high(bufnr), pattern)
-      if ses == nil then return end
-      sessions:activate(ses)
+      puff.select({ ".", ".,$", "1,.", "1,$" }, { prompt = "ido ranges" }, function(expr)
+        if expr == nil then return end
+        local start_lnum, stop_lnum = eval_range_expr(expr)
+        local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
+        if ses == nil then return end
+        sessions:activate(ses)
+      end)
     end
   end)
 end
@@ -129,7 +151,7 @@ do --M.deactivate
     local entries = {}
     local bufs = {}
     for bufnr, ses in pairs(sessions.kv) do
-      table.insert(entries, ses:title())
+      table.insert(entries, ses.title)
       table.insert(bufs, bufnr)
     end
     if #entries == 0 then return jelly.info("no active sessions") end

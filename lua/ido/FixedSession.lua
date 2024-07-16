@@ -1,42 +1,13 @@
 local augroups = require("infra.augroups")
 local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
-local jelly = require("infra.jellyfish")("ido.Session", "debug")
+local jelly = require("infra.jellyfish")("ido.FixedSession", "info")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local wincursor = require("infra.wincursor")
 
 local anchors = require("ido.anchors")
-
-local uv = vim.uv
-
-local Debounce
-do
-  ---@diagnostic disable: undefined-field
-
-  ---@class ido.Debounce
-  ---@field timer ffi.cdata*
-  ---@field delay integer @in milliseconds
-  local Impl = {}
-  Impl.__index = Impl
-
-  function Impl:start_soon(logic)
-    self.timer:stop()
-    self.timer:start(self.delay, 0, vim.schedule_wrap(logic))
-  end
-
-  function Impl:close()
-    self.timer:stop()
-    self.timer:close()
-  end
-
-  ---@param delay integer @in milliseconds
-  ---@return ido.Debounce
-  function Debounce(delay)
-    local timer = uv.new_timer()
-    return setmetatable({ timer = timer, delay = delay }, Impl)
-  end
-end
+local Debounce = require("ido.Debounce")
 
 ---@class ido.Origin
 ---@field lnum integer
@@ -45,14 +16,14 @@ end
 
 ---truth_{idx,xmid} -> truth of source; anchor
 ---
----@class ido.Session
+---@class ido.FixedSession
 ---
 ---@field status 'created'|'active'|'inactive'
 ---
 ---@field winid integer
 ---@field bufnr integer
+---@field title string
 ---
----@field pattern string
 ---@field origins ido.Origin[]
 ---@field truth_idx integer
 ---
@@ -70,7 +41,7 @@ function Session:activate()
     for i = 1, #self.origins do
       local origin = self.origins[i]
       local group = i == self.truth_idx and "IdoTruth" or "IdoReplica"
-      self.xmids[i] = anchors.set(self.bufnr, origin, group)
+      self.xmids[i] = anchors.set(self.bufnr, origin, group, true)
     end
     self.truth_xmid = self.xmids[self.truth_idx]
   end
@@ -90,17 +61,18 @@ function Session:activate()
     ---workaround for undo/redo
     ---* compare last_text and truth_text to avoid replicate triggering
 
-    local origin_text = anchors.text(self.bufnr, self.truth_xmid)
-
     --workaround of undo/redo
-    local last_text = {} ---@type string[]
+    ---@type string[]
+    local last_text = assert(anchors.text(self.bufnr, self.truth_xmid))
 
     local function on_change()
       local truth_text = anchors.text(self.bufnr, self.truth_xmid)
-      if truth_text == nil then jelly.info("anchor#0 has gone") end
-      if truth_text == nil then return self:deactivate() end
+      if truth_text == nil then
+        jelly.info("anchor#0 has gone")
+        self:deactivate()
+        return true
+      end
 
-      if truth_text == origin_text then return jelly.debug("no changes") end
       if itertools.equals(truth_text, last_text) then return jelly.debug("no changes") end
 
       self.debounce:start_soon(function()
@@ -130,13 +102,6 @@ function Session:activate()
   self.status = "active"
 end
 
----@return string
-function Session:title()
-  local pos = anchors.pos(self.bufnr, self.truth_xmid)
-  local lnum = pos and pos.start_lnum or "n/a"
-  return string.format("buf#%d:%s '%s'", self.bufnr, lnum, self.pattern)
-end
-
 function Session:deactivate()
   if self.status == "created" then goto beinactive end
   if self.status == "inactive" then return end
@@ -156,7 +121,7 @@ end
 ---@param pattern string
 ---@param start_lnum integer @0-based; inclusive
 ---@param stop_lnum integer @0-based; exclusive
----@return ido.Session?
+---@return ido.FixedSession?
 return function(winid, cursor, start_lnum, stop_lnum, pattern)
   local bufnr = ni.win_get_buf(winid)
 
@@ -191,12 +156,13 @@ return function(winid, cursor, start_lnum, stop_lnum, pattern)
     if truth_idx == nil then truth_idx = 1 end
   end
 
-    --stylua: ignore start
-    return setmetatable({
-      status = 'created',
-      winid = winid, bufnr = bufnr,
-      pattern= pattern, origins = origins, truth_idx = truth_idx,
-      xmids = {}, truth_xmid = nil,
-    }, Session)
-  --stylua: ignore end
+  local title = string.format("buf#%d (%s, ) '%s'", bufnr, start_lnum, stop_lnum, pattern)
+
+  --stylua: ignore
+  return setmetatable({
+    status = "created",
+    winid = winid, bufnr = bufnr, title = title,
+    origins = origins, truth_idx = truth_idx,
+    xmids = {}, truth_xmid = nil,
+  }, Session)
 end
