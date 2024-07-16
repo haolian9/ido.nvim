@@ -7,19 +7,20 @@ https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3
 * interactive
   * [x] input the pattern
   * [x] select a region, when treesitter is available
+  * [x] select a line range when treesitter is inavailable
   * [ ] opt-in/out on each occurrence, i think that's too cumbersome
-* good default without interactive
 * one and only one active session for each buffer
-* only one truth of source, all others are replica
+* only one truth of source, all others are replicas
 * no realtime syncing, must have a delay time
-* syncing changes to the buffer directly rather than extmarks
+* syncing changes to the buffer directly rather than changing extmarks
   * i found it's hard to maintance the integrity between buffer content and extmark, during
     user editing, especially undo/redo .
 * vim-flavored pattern
-* [ ] compatible with **utf-8** characters
+* compatible with **utf-8** characters
+* [ ] record ops using vim.on_key and replay the ops to all replicas
 
 ## status
-* just works
+* WIP: i'm not happy with its current impl.
 
 ## prerequisites
 * nvim 0.10.*
