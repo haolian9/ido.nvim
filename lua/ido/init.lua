@@ -4,6 +4,7 @@ local ropes = require("string.buffer")
 
 local ascii = require("infra.ascii")
 local buflines = require("infra.buflines")
+local ctx = require("infra.ctx")
 local ex = require("infra.ex")
 local jelly = require("infra.jellyfish")("ido", "info")
 local ni = require("infra.ni")
@@ -33,19 +34,6 @@ do
     if ascii.is_letter(string.sub(keyword, -1, -1)) then rope:put([[\>]]) end
     return rope:get()
   end
-end
-
----CAUTION: it uses the current window internally
----@param expr string
----@return integer start_lnum @0-based
----@return integer stop_lnum @0-based, exclusive
-local function eval_range_expr(expr)
-  local parsed = ni.parse_cmd(expr .. "w", {})
-  local start_lnum, stop_lnum = unpack(assert(parsed.range))
-  start_lnum = start_lnum - 1
-  if stop_lnum == nil then stop_lnum = start_lnum + 1 end
-
-  return start_lnum, stop_lnum
 end
 
 local sessions = {}
@@ -106,44 +94,76 @@ function M.activate(winid)
   sessions:activate(ses)
 end
 
----@param winid? integer
-function M.activate_interactively(winid)
-  winid = winid or ni.get_current_win()
-  local bufnr = ni.win_get_buf(winid)
-  local cursor = wincursor.last_position()
+do
+  ---CAUTION: it uses the current window internally
+  ---@param expr string
+  ---@return integer start_lnum @0-based
+  ---@return integer stop_lnum @0-based, exclusive
+  local function eval_range_expr(winid, expr)
+    return ctx.win(winid, function()
+      local parsed = ni.parse_cmd(expr .. "w", {})
+      local start_lnum, stop_lnum = unpack(assert(parsed.range))
+      start_lnum = start_lnum - 1
+      if stop_lnum == nil then stop_lnum = start_lnum + 1 end
 
-  sessions:deactivate(bufnr)
+      return start_lnum, stop_lnum
+    end)
+  end
 
-  local keyword = vsel.oneline_text(bufnr)
-  if keyword == nil then return jelly.info("no selecting keyword") end
+  ---@param node TSNode
+  local function resolve_node_range(node)
+    local start_lnum, _, stop_lnum = node:range()
 
-  local default_pattern = resolve_as_fixed_pattern(keyword)
-  puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
-    if pattern == nil or pattern == "" then return end
-
-    local SessionImpl = pattern == default_pattern and FixedSession or CoredSession
-
-    if pcall(ts.get_parser, bufnr) then
-      local nodes, paths = collect_routes(bufnr, cursor)
-      puff.select(paths, { prompt = "ido regions" }, function(_, index)
-        if index == nil then return end
-        --todo: potential off-by-one; it seems root-node.stop_lnum is exclusive, but others.stop_lnum are inclusive
-        local start_lnum, _, stop_lnum = nodes[index]:range()
-        stop_lnum = stop_lnum + 1
-        local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
-        if ses == nil then return end
-        sessions:activate(ses)
-      end)
-    else
-      puff.select({ ".", ".,$", "1,.", "1,$" }, { prompt = "ido ranges" }, function(expr)
-        if expr == nil then return end
-        local start_lnum, stop_lnum = eval_range_expr(expr)
-        local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
-        if ses == nil then return end
-        sessions:activate(ses)
-      end)
+    --in lua, it seems that
+    --* the root node ends (last_lnum+1, 0), in which lnum and col are exclusive
+    --* the child node ends (last_lnum, col), in which lnum is inclusive, col is exclusive
+    if node:parent() ~= nil then --
+      stop_lnum = stop_lnum + 1
     end
-  end)
+
+    return start_lnum, stop_lnum
+  end
+
+  ---@param winid? integer
+  function M.activate_interactively(winid)
+    winid = winid or ni.get_current_win()
+    local bufnr = ni.win_get_buf(winid)
+    local cursor = wincursor.last_position()
+
+    sessions:deactivate(bufnr)
+
+    local keyword = vsel.oneline_text(bufnr)
+    if keyword == nil then return jelly.info("no selecting keyword") end
+
+    local default_pattern = resolve_as_fixed_pattern(keyword)
+    puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
+      if pattern == nil or pattern == "" then return end
+
+      local SessionImpl = pattern == default_pattern and FixedSession or CoredSession
+
+      if pcall(ts.get_parser, bufnr) then
+        local nodes, paths = collect_routes(bufnr, cursor)
+        puff.select(paths, { prompt = "ido regions" }, function(_, index)
+          if index == nil then return end
+          local start_lnum, stop_lnum = resolve_node_range(nodes[index])
+          jelly.debug("node lines: (%s, %s)", start_lnum, stop_lnum)
+          local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
+          if ses == nil then return end
+          sessions:activate(ses)
+        end)
+      else
+        puff.select({ ".", ".,$", "1,.", "1,$" }, { prompt = "ido ranges" }, function(expr)
+          if expr == nil then return end
+          local start_lnum, stop_lnum = eval_range_expr(winid, expr)
+          jelly.debug("expr lines: (%s, %s)", start_lnum, stop_lnum)
+          local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
+          if ses == nil then return end
+          sessions:activate(ses)
+          jelly.info("activated 'CoredSession', the core of each matches are not supposed to be modified")
+        end)
+      end
+    end)
+  end
 end
 
 do --M.deactivate
