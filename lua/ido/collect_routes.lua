@@ -18,6 +18,7 @@ do
     else_statement = "else",
     elseif_statement = "elseif",
     function_definition = "()",
+    string = "str",
   }
 
   local collectable_named = {

@@ -8,6 +8,7 @@ local ctx = require("infra.ctx")
 local ex = require("infra.ex")
 local jelly = require("infra.jellyfish")("ido", "info")
 local ni = require("infra.ni")
+local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
 local wincursor = require("infra.wincursor")
 
@@ -19,19 +20,20 @@ local puff = require("puff")
 
 local ts = vim.treesitter
 
-local resolve_as_fixed_pattern
+local resolve_as_literals
 do
   local rope = ropes.new(64)
 
   ---transform:
+  ---* very magic
   ---* to fixed string
   ---* add word boundaries
   ---@param keyword string
-  function resolve_as_fixed_pattern(keyword)
-    keyword = vim.fn.escape(keyword, [[.$*~\]])
-    if ascii.is_letter(string.sub(keyword, 1, 1)) then rope:put([[\<]]) end
+  function resolve_as_literals(keyword)
+    keyword = VimRegex.verymagic_escape(keyword)
+    if ascii.is_letter(string.sub(keyword, 1, 1)) then rope:put("<") end
     rope:put(keyword)
-    if ascii.is_letter(string.sub(keyword, -1, -1)) then rope:put([[\>]]) end
+    if ascii.is_letter(string.sub(keyword, -1, -1)) then rope:put(">") end
     return rope:get()
   end
 end
@@ -89,7 +91,7 @@ function M.activate(winid)
   local keyword = vsel.oneline_text(bufnr)
   if keyword == nil then return jelly.info("no selecting keyword") end
 
-  local ses = FixedSession(winid, cursor, 0, buflines.count(bufnr), resolve_as_fixed_pattern(keyword))
+  local ses = FixedSession(winid, cursor, 0, buflines.count(bufnr), resolve_as_literals(keyword))
   if ses == nil then return end
   sessions:activate(ses)
 end
@@ -135,8 +137,8 @@ do
     local keyword = vsel.oneline_text(bufnr)
     if keyword == nil then return jelly.info("no selecting keyword") end
 
-    local default_pattern = resolve_as_fixed_pattern(keyword)
-    puff.input({ icon = "🎯", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
+    local default_pattern = resolve_as_literals(keyword)
+    puff.input({ icon = "", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
       if pattern == nil or pattern == "" then return end
 
       local SessionImpl = pattern == default_pattern and FixedSession or CoredSession
