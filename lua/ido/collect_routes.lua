@@ -2,8 +2,6 @@ local fs = require("infra.fs")
 local its = require("infra.its")
 local prefer = require("infra.prefer")
 
-local nuts = require("squirrel.nuts")
-
 local ts = vim.treesitter
 
 ---原则：路径由近到远排序
