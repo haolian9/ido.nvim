@@ -2,7 +2,7 @@ local fs = require("infra.fs")
 local its = require("infra.its")
 local prefer = require("infra.prefer")
 
-local nuts = require("squirrel.nuts")
+local nuts = require("infra.nuts")
 
 local ts = vim.treesitter
 
@@ -54,7 +54,7 @@ do
           table.insert(parents, 1, parent)
           local fields = parent:field("name")
           assert(#fields == 1)
-          local name = nuts.get_1l_node_text(bufnr, fields[1])
+          local name = nuts.flatnode_text(bufnr, fields[1])
           table.insert(names, 1, string.format(collectable_named[ntype], name))
           goto continue
         end
@@ -99,7 +99,7 @@ function collectors.final(bufnr, start_node)
         name = parent:type()
       else
         assert(#fields == 1)
-        name = nuts.get_node_lines(bufnr, fields[1])[1]
+        name = nuts.node_lines(bufnr, fields[1])[1]
       end
 
       table.insert(parents, 1, parent)
