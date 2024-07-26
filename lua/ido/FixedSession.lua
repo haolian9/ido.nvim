@@ -20,7 +20,6 @@ local Debounce = require("ido.Debounce")
 ---
 ---@field status 'created'|'active'|'inactive'
 ---
----@field winid integer
 ---@field bufnr integer
 ---@field title string
 ---
@@ -95,7 +94,7 @@ function Session:activate()
   do --initial cursor
     local pos = assert(anchors.pos(self.bufnr, self.truth_xmid))
     assert(pos.stop_col > 0)
-    wincursor.go(self.winid, pos.stop_lnum, pos.stop_col - 1)
+    wincursor.go(0, pos.stop_lnum, pos.stop_col - 1)
     feedkeys("a", "n")
   end
 
@@ -161,7 +160,7 @@ return function(winid, cursor, start_lnum, stop_lnum, pattern)
   --stylua: ignore
   return setmetatable({
     status = "created",
-    winid = winid, bufnr = bufnr, title = title,
+    bufnr = bufnr, title = title,
     origins = origins, truth_idx = truth_idx,
     xmids = {}, truth_xmid = nil,
   }, Session)

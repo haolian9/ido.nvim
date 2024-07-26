@@ -84,7 +84,7 @@ end
 function M.activate(winid)
   winid = winid or ni.get_current_win()
   local bufnr = ni.win_get_buf(winid)
-  local cursor = wincursor.last_position()
+  local cursor = wincursor.last_position(winid)
 
   sessions:deactivate(bufnr)
 
@@ -130,7 +130,7 @@ do
   function M.activate_interactively(winid)
     winid = winid or ni.get_current_win()
     local bufnr = ni.win_get_buf(winid)
-    local cursor = wincursor.last_position()
+    local cursor = wincursor.last_position(winid)
 
     sessions:deactivate(bufnr)
 
