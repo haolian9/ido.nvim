@@ -157,9 +157,9 @@ do
 
   ---@param flavor? 'cored'|'elastic' @nil=elastic
   function M.activate(flavor)
-    local winid = ni.get_current_win()
     flavor = flavor or "elastic"
 
+    local winid = ni.get_current_win()
     local Session = require(flavor_to_session[flavor])
 
     main(winid, Session)
