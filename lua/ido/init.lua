@@ -3,7 +3,6 @@ local M = {}
 local ropes = require("string.buffer")
 
 local ascii = require("infra.ascii")
-local buflines = require("infra.buflines")
 local ctx = require("infra.ctx")
 local ex = require("infra.ex")
 local jelly = require("infra.jellyfish")("ido", "info")
@@ -14,8 +13,6 @@ local wincursor = require("infra.wincursor")
 
 local anchors = require("ido.anchors")
 local collect_routes = require("ido.collect_routes")
-local CoredSession = require("ido.CoredSession")
-local FixedSession = require("ido.FixedSession")
 local puff = require("puff")
 
 local ts = vim.treesitter
@@ -38,14 +35,16 @@ do
   end
 end
 
+---@alias ido.Session ido.ElasticSession|ido.CoredSession
+
 local sessions = {}
 do
   ---{bufnr:Session}
-  ---@type {[integer]: ido.FixedSession|ido.CoredSession}
+  ---@type {[integer]: ido.Session}
   sessions.kv = {}
 
   ---@param bufnr integer
-  ---@return ido.FixedSession|ido.CoredSession?
+  ---@return ido.Session?
   function sessions:session(bufnr)
     local ses = self.kv[bufnr]
     if ses == nil then return end
@@ -65,10 +64,12 @@ do
     return false
   end
 
-  ---@param ses ido.FixedSession|ido.CoredSession
-  function sessions:activate(ses)
-    assert(self.kv[ses.bufnr] == nil, "this buf has already activated a session")
-    self.kv[ses.bufnr] = ses
+  ---@param bufnr integer
+  ---@param ses ido.Session
+  function sessions:activate(bufnr, ses)
+    assert(bufnr == ses.bufnr)
+    assert(self.kv[bufnr] == nil, "this buf has already activated a session")
+    self.kv[bufnr] = ses
     ses:activate()
   end
 
@@ -78,22 +79,6 @@ do
     self.kv[bufnr] = nil
     ses:deactivate()
   end
-end
-
----@param winid? integer
-function M.activate(winid)
-  winid = winid or ni.get_current_win()
-  local bufnr = ni.win_get_buf(winid)
-  local cursor = wincursor.last_position(winid)
-
-  sessions:deactivate(bufnr)
-
-  local keyword = vsel.oneline_text(bufnr)
-  if keyword == nil then return jelly.info("no selecting keyword") end
-
-  local ses = FixedSession(winid, cursor, 0, buflines.count(bufnr), resolve_as_literals(keyword))
-  if ses == nil then return end
-  sessions:activate(ses)
 end
 
 do
@@ -126,9 +111,9 @@ do
     return start_lnum, stop_lnum
   end
 
-  ---@param winid? integer
-  function M.activate_interactively(winid)
-    winid = winid or ni.get_current_win()
+  ---@param winid integer
+  ---@param Session ido.Session
+  local function main(winid, Session)
     local bufnr = ni.win_get_buf(winid)
     local cursor = wincursor.last_position(winid)
 
@@ -141,30 +126,43 @@ do
     puff.input({ icon = "", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
       if pattern == nil or pattern == "" then return end
 
-      local SessionImpl = pattern == default_pattern and FixedSession or CoredSession
-
       if pcall(ts.get_parser, bufnr) then
         local nodes, paths = collect_routes(bufnr, cursor)
         puff.select(paths, { prompt = "ido regions" }, function(_, index)
           if index == nil then return end
           local start_lnum, stop_lnum = resolve_node_range(nodes[index])
           jelly.debug("node lines: (%s, %s)", start_lnum, stop_lnum)
-          local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
+          local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
           if ses == nil then return end
-          sessions:activate(ses)
+          sessions:activate(bufnr, ses)
         end)
       else
         puff.select({ ".", ".,$", "1,.", "1,$" }, { prompt = "ido ranges" }, function(expr)
           if expr == nil then return end
           local start_lnum, stop_lnum = eval_range_expr(winid, expr)
           jelly.debug("expr lines: (%s, %s)", start_lnum, stop_lnum)
-          local ses = SessionImpl(winid, cursor, start_lnum, stop_lnum, pattern)
+          local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
           if ses == nil then return end
-          sessions:activate(ses)
+          sessions:activate(bufnr, ses)
           jelly.info("activated 'CoredSession', the core of each matches are not supposed to be modified")
         end)
       end
     end)
+  end
+
+  local flavor_to_session = {
+    cored = "ido.CoredSession",
+    elastic = "ido.ElasticSession",
+  }
+
+  ---@param flavor? 'cored'|'elastic' @nil=elastic
+  function M.activate(flavor)
+    local winid = ni.get_current_win()
+    flavor = flavor or "elastic"
+
+    local Session = require(flavor_to_session[flavor])
+
+    main(winid, Session)
   end
 end
 

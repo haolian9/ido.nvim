@@ -1,7 +1,7 @@
 local augroups = require("infra.augroups")
 local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
-local jelly = require("infra.jellyfish")("ido.FixedSession", "info")
+local jelly = require("infra.jellyfish")("ido.ElasticSession", "info")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local wincursor = require("infra.wincursor")
@@ -16,7 +16,7 @@ local Debounce = require("ido.Debounce")
 
 ---truth_{idx,xmid} -> truth of source; anchor
 ---
----@class ido.FixedSession
+---@class ido.ElasticSession
 ---
 ---@field status 'created'|'active'|'inactive'
 ---
@@ -120,7 +120,7 @@ end
 ---@param pattern string
 ---@param start_lnum integer @0-based; inclusive
 ---@param stop_lnum integer @0-based; exclusive
----@return ido.FixedSession?
+---@return ido.ElasticSession?
 return function(winid, cursor, start_lnum, stop_lnum, pattern)
   local bufnr = ni.win_get_buf(winid)
 
