@@ -1,4 +1,5 @@
 local augroups = require("infra.augroups")
+local Debounce = require("infra.Debounce")
 local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
 local jelly = require("infra.jellyfish")("ido.ElasticSession", "info")
@@ -7,7 +8,6 @@ local VimRegex = require("infra.VimRegex")
 local wincursor = require("infra.wincursor")
 
 local anchors = require("ido.anchors")
-local Debounce = require("ido.Debounce")
 
 ---@class ido.Origin
 ---@field lnum integer
@@ -29,7 +29,7 @@ local Debounce = require("ido.Debounce")
 ---@field xmids integer[]
 ---@field truth_xmid integer @==xmids[truth_idx]
 ---@field aug infra.BufAugroup
----@field debounce ido.Debounce
+---@field debounce infra.Debounce
 local Session = {}
 Session.__index = Session
 

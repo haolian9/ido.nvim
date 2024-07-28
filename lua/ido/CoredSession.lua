@@ -5,6 +5,7 @@
 ---* changing core will deactivate the session
 
 local augroups = require("infra.augroups")
+local Debounce = require("infra.Debounce")
 local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
 local jelly = require("infra.jellyfish")("ido.CoredSession", "info")
@@ -13,7 +14,6 @@ local VimRegex = require("infra.VimRegex")
 local wincursor = require("infra.wincursor")
 
 local anchors = require("ido.anchors")
-local Debounce = require("ido.Debounce")
 
 ---truth_{idx,xmid} -> truth of source; anchor
 ---
@@ -32,7 +32,7 @@ local Debounce = require("ido.Debounce")
 ---@field right_xmids integer[]
 ---
 ---@field aug infra.BufAugroup
----@field debounce ido.Debounce
+---@field debounce infra.Debounce
 local Session = {}
 Session.__index = Session
 
