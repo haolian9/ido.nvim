@@ -1,61 +1,45 @@
 local fs = require("infra.fs")
 local its = require("infra.its")
-local prefer = require("infra.prefer")
-
 local nuts = require("infra.nuts")
+local prefer = require("infra.prefer")
 
 local ts = vim.treesitter
 
----原则：路径由近到远排序
-local collectors = {}
-
-do
-  local collectable_anon = {
-    do_statement = "do",
-    while_statement = "while",
-    for_statement = "for",
-    if_statement = "if",
-    else_statement = "else",
-    elseif_statement = "elseif",
-    function_definition = "()",
-    string = "str",
-  }
-
-  local collectable_named = {
-    function_declaration = "%s()",
-  }
-
+---@param root_type string
+---@param anons {[string]:string} @{node-type: repr}
+---@param nameds {[string]:string} @{node-type: repr}
+local function LangCollector(root_type, anons, nameds)
   ---@param bufnr integer
   ---@param start_node TSNode
-  function collectors.lua(bufnr, start_node) --
+  return function(bufnr, start_node)
     ---@type TSNode[], string[]
     local parents, names = {}, {}
     do
       local node = start_node
       while true do
-        local parent = assert(node:parent())
+        local parent = assert(node:parent(), node:sexpr())
         node = parent
 
         local ntype = parent:type()
 
-        if ntype == "chunk" then
+        if ntype == root_type then
           table.insert(parents, 1, parent)
           table.insert(names, 1, "$")
           break
         end
 
-        if collectable_anon[ntype] then
+        if anons[ntype] then
           table.insert(parents, 1, parent)
-          table.insert(names, 1, collectable_anon[ntype])
+          table.insert(names, 1, anons[ntype])
           goto continue
         end
 
-        if collectable_named[ntype] then
+        if nameds[ntype] then
           table.insert(parents, 1, parent)
           local fields = parent:field("name")
           assert(#fields == 1)
           local name = nuts.flatnode_text(bufnr, fields[1])
-          table.insert(names, 1, string.format(collectable_named[ntype], name))
+          table.insert(names, 1, string.format(nameds[ntype], name))
           goto continue
         end
 
@@ -77,6 +61,77 @@ do
     return nodes, paths
   end
 end
+
+---原则：路径由近到远排序
+local collectors = {}
+
+collectors.lua = LangCollector( --
+  "chunk",
+  {
+    do_statement = "do",
+    while_statement = "while",
+    for_statement = "for",
+    if_statement = "if",
+    else_statement = "else",
+    elseif_statement = "elseif",
+    function_definition = "()",
+    string = "str",
+  },
+  {
+    function_declaration = "%s()",
+  }
+)
+
+collectors.python = LangCollector( --
+  "module",
+  {
+    while_statement = "while",
+    for_statement = "for",
+    with_statement = "with",
+    --
+    if_statement = "if",
+    elif_clause = "elif",
+    --
+    decorated_definition = "@()",
+    lambda = "()",
+    dictionary = "{}",
+    list = "[]",
+    set = "[]",
+    --
+    try_clause = "try",
+    except_clause = "except",
+    finally_clause = "final",
+    --
+    else_clause = "else",
+    block = "blk",
+    string = "str",
+  },
+  {
+    function_definition = "%s()",
+    class_definition = "%s::",
+  }
+)
+
+collectors.zig = LangCollector( --
+  "source_file",
+  {
+    Decl = "decl",
+    Statement = "stm",
+    SuffixExpr = "blk",
+    --
+    SwitchExpr = "swit",
+    SwitchProng = "case",
+    --
+    WhileStatement = "while",
+    ForStatement = "for",
+    IfStatement = "if",
+    --
+    ContainerDecl = "struct",
+    --
+    Block = "blk",
+  },
+  {}
+)
 
 function collectors.final(bufnr, start_node)
   ---@type TSNode[], string[]
