@@ -4,6 +4,7 @@ local feedkeys = require("infra.feedkeys")
 local itertools = require("infra.itertools")
 local jelly = require("infra.jellyfish")("ido.ElasticSession", "info")
 local ni = require("infra.ni")
+local strlib = require("infra.strlib")
 local VimRegex = require("infra.VimRegex")
 local wincursor = require("infra.wincursor")
 
@@ -134,6 +135,7 @@ return function(winid, cursor, start_lnum, stop_lnum, pattern)
           return jelly.fatal("RuntimeError", "found two contiguous origins: (%d,%d), (%d,%d)", prev.start_col, prev.stop_col, start_col, stop_col)
         end
         table.insert(origins, { lnum = lnum, start_col = start_col, stop_col = stop_col })
+        if strlib.startswith(pattern, "^") or strlib.endswith(pattern, "$") then break end
       end
     end
     if #origins < 2 then return jelly.warn("no other matches") end
