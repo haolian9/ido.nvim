@@ -29,6 +29,7 @@ local anchors = require("ido.anchors")
 ---
 ---@field xmids integer[]
 ---@field truth_xmid integer @==xmids[truth_idx]
+---
 ---@field aug infra.BufAugroup
 ---@field debounce infra.Debounce
 local Session = {}

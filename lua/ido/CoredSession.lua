@@ -31,6 +31,7 @@ local anchors = require("ido.anchors")
 ---@field core_xmids integer[]
 ---@field left_xmids integer[]
 ---@field right_xmids integer[]
+---@field truth_xmid integer @==core_xmids[truth_idx]
 ---
 ---@field aug infra.BufAugroup
 ---@field debounce infra.Debounce
@@ -40,13 +41,15 @@ Session.__index = Session
 function Session:activate()
   assert(self.status == "created")
 
-  --place anchors
-  for i = 1, #self.origins do
-    local origin = self.origins[i]
-    local group = i == self.truth_idx and "IdoTruth" or "IdoReplica"
-    self.core_xmids[i] = anchors.set(self.bufnr, origin, group, false)
-    self.left_xmids[i] = anchors.set(self.bufnr, { lnum = origin.lnum, start_col = origin.start_col, stop_col = origin.start_col }, group, true)
-    self.right_xmids[i] = anchors.set(self.bufnr, { lnum = origin.lnum, start_col = origin.stop_col, stop_col = origin.stop_col }, group, true)
+  do --place anchors
+    for i = 1, #self.origins do
+      local origin = self.origins[i]
+      local group = i == self.truth_idx and "IdoTruth" or "IdoReplica"
+      self.core_xmids[i] = anchors.set(self.bufnr, origin, group, false)
+      self.left_xmids[i] = anchors.set(self.bufnr, { lnum = origin.lnum, start_col = origin.start_col, stop_col = origin.start_col }, group, true)
+      self.right_xmids[i] = anchors.set(self.bufnr, { lnum = origin.lnum, start_col = origin.stop_col, stop_col = origin.stop_col }, group, true)
+    end
+    self.truth_xmid = self.core_xmids[self.truth_idx]
   end
 
   self.aug = augroups.BufAugroup(self.bufnr, "ido", true)
