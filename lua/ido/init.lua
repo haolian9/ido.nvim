@@ -6,6 +6,7 @@ local ascii = require("infra.ascii")
 local ctx = require("infra.ctx")
 local ex = require("infra.ex")
 local jelly = require("infra.jellyfish")("ido", "info")
+local mi = require("infra.mi")
 local ni = require("infra.ni")
 local VimRegex = require("infra.VimRegex")
 local vsel = require("infra.vsel")
@@ -184,7 +185,7 @@ do --M.deactivate
 
   ---@param winid? integer
   function M.deactivate(winid)
-    winid = winid or ni.get_current_win()
+    winid = mi.resolve_winid_param(winid)
     local bufnr = ni.win_get_buf(winid)
 
     if sessions:is_active(bufnr) then return sessions:deactivate(bufnr) end
@@ -193,8 +194,9 @@ do --M.deactivate
   end
 end
 
+---@param winid? integer
 function M.goto_truth(winid)
-  winid = winid or ni.get_current_win()
+  winid = mi.resolve_winid_param(winid)
   local bufnr = ni.win_get_buf(winid)
 
   local ses = sessions:session(bufnr)
