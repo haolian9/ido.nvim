@@ -26,7 +26,7 @@ https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3
 * WIP: i'm not happy with its impl and UX
 
 ## prerequisites
-* nvim 0.10.*
+* nvim 0.11.*
 * haolian9/infra.nvim
 * haolian9/puff.nvim
 
