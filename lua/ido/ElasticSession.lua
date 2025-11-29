@@ -128,7 +128,7 @@ return function(winid, cursor, start_lnum, stop_lnum, pattern)
 
   local origins = {} ---@type ido.Origin[]
   do
-    local regex = assert(VimRegex.VeryMagic(pattern))
+    local regex = VimRegex(pattern)
     for lnum = start_lnum, stop_lnum - 1 do
       for start_col, stop_col in regex:iter_line(bufnr, lnum) do
         local prev = origins[#origins]

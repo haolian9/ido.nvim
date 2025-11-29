@@ -18,7 +18,7 @@ local puff = require("puff")
 
 local ts = vim.treesitter
 
-local resolve_as_literals
+local resolve_as_fixedstr_pattern
 do
   local rope = ropes.new(64)
 
@@ -26,12 +26,13 @@ do
   ---* very magic
   ---* to fixed string
   ---* add word boundaries
-  ---@param keyword string
-  function resolve_as_literals(keyword)
-    keyword = VimRegex.verymagic_escape(keyword)
-    if ascii.is_letter(string.sub(keyword, 1, 1)) then rope:put("<") end
-    rope:put(keyword)
-    if ascii.is_letter(string.sub(keyword, -1, -1)) then rope:put(">") end
+  ---@param str string
+  function resolve_as_fixedstr_pattern(str)
+    local pat = VimRegex.escape_for_verynomagic(str)
+    rope:put([[\V]])
+    if ascii.is_letter(string.sub(pat, 1, 1)) then rope:put([[\<]]) end
+    rope:put(pat)
+    if ascii.is_letter(string.sub(pat, -1, -1)) then rope:put([[\>]]) end
     return rope:get()
   end
 end
@@ -123,9 +124,9 @@ do
     local keyword = vsel.oneline_text(bufnr)
     if keyword == nil then return jelly.info("no selecting keyword") end
 
-    local default_pattern = resolve_as_literals(keyword)
-    puff.input({ icon = "", prompt = "ido", startinsert = false, default = default_pattern }, function(pattern)
+    puff.input({ icon = "", prompt = "ido", startinsert = false, default = resolve_as_fixedstr_pattern(keyword) }, function(pattern)
       if pattern == nil or pattern == "" then return end
+      jelly.debug("using pattern: %s", pattern)
 
       if pcall(ts.get_parser, bufnr) then
         local nodes, paths = collect_routes(bufnr, cursor)
