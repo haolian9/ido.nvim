@@ -30,9 +30,9 @@ do
   function resolve_as_fixedstr_pattern(str)
     local pat = VimRegex.escape_for_verynomagic(str)
     rope:put([[\V]])
-    if ascii.is_letter(string.sub(pat, 1, 1)) then rope:put([[\<]]) end
+    if string.find(str, "^%a") then rope:put([[\<]]) end
     rope:put(pat)
-    if ascii.is_letter(string.sub(pat, -1, -1)) then rope:put([[\>]]) end
+    if string.find(str, "%a$") then rope:put([[\>]]) end
     return rope:get()
   end
 end
