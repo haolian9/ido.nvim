@@ -179,6 +179,7 @@ do --M.deactivate
     if #entries == 0 then return jelly.info("no active sessions") end
 
     puff.select(entries, { prompt = "ido deactivate" }, function(_, row)
+      if row == nil then return end
       local nr = assert(bufs[row])
       sessions:deactivate(nr)
     end)
