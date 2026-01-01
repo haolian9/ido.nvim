@@ -190,5 +190,18 @@ return function(bufnr, cursor)
   if start_node == nil then error("no tsnode found") end
 
   local ft = prefer.bo(bufnr, "filetype")
-  return (collectors[ft] or collectors.final)(bufnr, start_node)
+  local nodes, paths = (collectors[ft] or collectors.final)(bufnr, start_node)
+
+  --special case: cursor line
+  table.insert(nodes, 1, start_node)
+  table.insert(paths, 1, ".")
+
+  --special case: treat the last as root node
+  if #nodes > 1 then
+    local root_node, root_path = table.remove(nodes), table.remove(paths)
+    table.insert(nodes, 2, root_node)
+    table.insert(paths, 2, root_path)
+  end
+
+  return nodes, paths
 end

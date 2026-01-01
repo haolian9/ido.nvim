@@ -2,7 +2,6 @@ local M = {}
 
 local ropes = require("string.buffer")
 
-local ascii = require("infra.ascii")
 local ctx = require("infra.ctx")
 local ex = require("infra.ex")
 local jelly = require("infra.jellyfish")("ido", "info")
@@ -37,7 +36,7 @@ do
   end
 end
 
----@alias ido.Session ido.ElasticSession|ido.CoredSession
+---@alias ido.Session ido.MirrorSession|ido.LockedSession
 
 local sessions = {}
 do
@@ -115,56 +114,69 @@ do
 
   ---@param winid integer
   ---@param Session ido.Session
-  local function main(winid, Session)
-    local bufnr = ni.win_get_buf(winid)
+  ---@param pattern string
+  local function main(winid, Session, pattern)
     local cursor = wincursor.last_position(winid)
+    local bufnr = ni.win_get_buf(winid)
+
+    if pcall(ts.get_parser, bufnr) then
+      local nodes, paths = collect_routes(bufnr, cursor)
+      puff.select(paths, { prompt = "ido regions" }, function(_, index)
+        if index == nil then return end
+        local start_lnum, stop_lnum = resolve_node_range(nodes[index])
+        jelly.debug("node lines: (%s, %s)", start_lnum, stop_lnum)
+        local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
+        if ses == nil then return end
+        sessions:activate(bufnr, ses)
+      end)
+    else
+      puff.select({ ".", "1,$", ".,$", "1,." }, { prompt = "ido ranges" }, function(expr)
+        if expr == nil then return end
+        local start_lnum, stop_lnum = eval_range_expr(winid, expr)
+        jelly.debug("expr lines: (%s, %s)", start_lnum, stop_lnum)
+        local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
+        if ses == nil then return end
+        sessions:activate(bufnr, ses)
+        jelly.info("activated 'LockedSession', the core of each matches are not supposed to be modified")
+      end)
+    end
+  end
+
+  local suggests = { [[\v[^ ]+]] }
+  local flavors = { locked = "ido.LockedSession", mirror = "ido.MirrorSession" }
+
+  ---@param flavor? 'locked'|'mirror' @nil=mirror
+  function M.activate(flavor)
+    flavor = flavor or "mirror"
+
+    local winid = ni.get_current_win()
+    local Session = require(flavors[flavor])
+
+    local bufnr = ni.win_get_buf(winid)
 
     sessions:deactivate(bufnr)
 
     local keyword = vsel.oneline_text(bufnr)
     if keyword == nil then return jelly.info("no selecting keyword") end
 
-    puff.input({ icon = "", prompt = "ido", startinsert = false, default = resolve_as_fixedstr_pattern(keyword) }, function(pattern)
+    puff.moreinput({ icon = "", prompt = "ido", startinsert = false, suggests = suggests, default = resolve_as_fixedstr_pattern(keyword) }, function(pattern)
       if pattern == nil or pattern == "" then return end
       jelly.debug("using pattern: %s", pattern)
-
-      if pcall(ts.get_parser, bufnr) then
-        local nodes, paths = collect_routes(bufnr, cursor)
-        puff.select(paths, { prompt = "ido regions" }, function(_, index)
-          if index == nil then return end
-          local start_lnum, stop_lnum = resolve_node_range(nodes[index])
-          jelly.debug("node lines: (%s, %s)", start_lnum, stop_lnum)
-          local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
-          if ses == nil then return end
-          sessions:activate(bufnr, ses)
-        end)
-      else
-        puff.select({ ".", ".,$", "1,.", "1,$" }, { prompt = "ido ranges" }, function(expr)
-          if expr == nil then return end
-          local start_lnum, stop_lnum = eval_range_expr(winid, expr)
-          jelly.debug("expr lines: (%s, %s)", start_lnum, stop_lnum)
-          local ses = Session(winid, cursor, start_lnum, stop_lnum, pattern)
-          if ses == nil then return end
-          sessions:activate(bufnr, ses)
-          jelly.info("activated 'CoredSession', the core of each matches are not supposed to be modified")
-        end)
-      end
+      main(winid, Session, pattern)
     end)
   end
 
-  local flavor_to_session = {
-    cored = "ido.CoredSession",
-    elastic = "ido.ElasticSession",
-  }
-
-  ---@param flavor? 'cored'|'elastic' @nil=elastic
-  function M.activate(flavor)
-    flavor = flavor or "elastic"
-
+  ---<cword> as fixed-string pattern, with mirror flavor
+  function M.activate_cword()
     local winid = ni.get_current_win()
-    local Session = require(flavor_to_session[flavor])
+    local Session = require(flavors.mirror)
 
-    main(winid, Session)
+    local pattern = VimRegex.escape_for_verynomagic(vim.fn.expand("<cword>"))
+    local bufnr = ni.win_get_buf(winid)
+
+    sessions:deactivate(bufnr)
+
+    main(winid, Session, pattern)
   end
 end
 
