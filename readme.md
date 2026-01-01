@@ -9,21 +9,22 @@ https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3
   * [x] select a TSNode region
   * [x] select a line range
   * ~~opt-in/out on each occurrence~~
+* two session flavors:
+  * MirrorSession: `[changeable]` where the `changeable` is captured by the input pattern, it can be zero-range
+  * LockedSession: `[changeable][core][changeable]` where the `core` is captured by the input pattern, the changeable parts are zero-range at the begining
 * one and only one active session for each buffer
 * only one truth of source, all others are replicas
-* there is a delay time on syncing
+* having delay/debounce time on syncing
 * syncing changes to the buffer directly rather than changing extmarks
   * i found it's hard to maintance the integrity between buffer content and extmark, during
     user editing, especially undo/redo .
 * vim-flavored pattern
 * compatible with **utf-8** characters
-* there are session flavors:
-  * ElasticSession: `[changeable]` where the `changeable` is captured by the input pattern, it can be zero-range
-  * CoredSession: `[changeable][core][changeable]` where the `core` is captured by the input pattern, the changeable parts are zero-range at the begining
 * ~~record ops by vim.on_key and replay them to all replicas~~
+* a narrow-region-like plugin may help
 
 ## status
-* WIP: i'm not happy with its impl and UX
+* feature-frozen
 
 ## prerequisites
 * nvim 0.11.*
@@ -33,9 +34,10 @@ https://github.com/haolian9/zongzi/assets/6236829/e0bb9e13-359c-4229-a694-936ec3
 ## usage
 here's my personal config
 ```
-do
-  m.x("gii", ":lua require'ido'.activate('ElasticSession')<cr>")
-  m.x("gio", ":lua require'ido'.activate('CoredSession')<cr>")
+do --ido
+  m.x("gii", [[<esc><cmd>lua require'ido'.activate('mirror')<cr>]])
+  m.x("gio", [[<esc><cmd>lua require'ido'.activate('locked')<cr>]])
+  m.n("giw", [[<esc><cmd>lua require'ido'.activate_cword()<cr>]])
   m.n("gi0", function() require("ido").goto_truth() end)
 
   do --:Ido
